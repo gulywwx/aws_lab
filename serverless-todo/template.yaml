@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'ToDo Application Demo'
+
+
+# ======================== GLOBAL ======================== #
+Globals:
+  Function:
+    Runtime: python3.8
+    Timeout: 60
+    Environment:
+      Variables:
+        TASK_TABLE: !Ref TaskTable
+        USER_TABLE: !Ref UserTable
+        SECRET_KEY: secret-info
+
+
+
+# ======================== RESOURCES ======================== #
+Resources:
+
+  MainApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      # DefinitionUri: ./swagger.json
+      Auth:
+        DefaultAuthorizer: JWTCustomAuthorizer
+        Authorizers:
+          JWTCustomAuthorizer:
+            FunctionArn: !GetAtt JWTAuthFunction.Arn
+            Identity:
+              Header: Authorization # OPTIONAL; Default: 'Authorization'
+
+
+  JWTAuthFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: 'JWTAuthFunction'
+      CodeUri: backend/functions/user
+      Handler: authorizer.lambda_handler
+
+
+  LoginFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: 'LoginFunction'
+      CodeUri: backend/functions/user
+      Handler: login.lambda_handler
+      Policies: # follow the principle of least privilege
+        - DynamoDBCrudPolicy: # AWS SAM policy
+            TableName: !Ref UserTable
+      Events:
+        LoginAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: '/user/login'
+            Method: POST
+            Auth:
+              Authorizer: NONE
+
+  UserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: 'UserFunction'
+      Handler: app.lambda_handler
+      CodeUri: backend/functions/user
+      Policies: # follow the principle of least privilege
+        - DynamoDBCrudPolicy: # AWS SAM policy
+            TableName: !Ref UserTable
+      Events:
+        CreateUserApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /user
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        GetTaskApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /user/{id}
+            Method: GET
+        GetTasksApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /user/
+            Method: GET
+        UpdateTaskApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /user
+            Method: PUT
+        DeleteTaskApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /user/{id}
+            Method: DELETE
+
+
+
+  TaskFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: 'TaskFunction'
+      Handler: app.lambda_handler
+      CodeUri: backend/functions/task
+      Policies: # follow the principle of least privilege
+        - DynamoDBCrudPolicy: # AWS SAM policy
+            TableName: !Ref TaskTable
+      Events:
+        CreateTaskApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /todo
+            Method: POST
+        GetTaskApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /todo/{id}
+            Method: GET
+        GetTasksApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /todo/
+            Method: GET
+        UpdateTaskApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /todo
+            Method: PUT
+        DeleteTaskApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MainApi
+            Path: /todo/{id}
+            Method: DELETE
+
+
+ # dynamoDB table to store tasks
+  TaskTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TaskTable
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "userID"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "id"
+          KeyType: "HASH"
+      GlobalSecondaryIndexes:
+        - IndexName: "userIDIndex"
+          KeySchema:
+            - AttributeName: "userID"
+              KeyType: "HASH"
+            - AttributeName: "id"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+
+
+  UserTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UserTable
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "id"
+          KeyType: "HASH"
+      GlobalSecondaryIndexes:
+        - IndexName: "emailIndex"
+          KeySchema:
+            - AttributeName: "email"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+
+
+Outputs:
+  TaskApi:
+    Description: 'Task API Gateway endpoint URL'
+    Value: !Sub 'https://${MainApi}.execute-api.us-east-1.amazonaws.com/Prod'
