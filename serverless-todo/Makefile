@@ -17,8 +17,7 @@ clean:
 	rm -rf backend/functions/user/PyJWT*
 
 clean-all: destroy clean
-	aws cloudformation delete-stack --stack-name ${STACK_NAME} --profile ${AWS_PROFILE}
-	aws s3 rb s3://$(BUCKET_NAME) --profile ${AWS_PROFILE}
+	aws s3 rb s3://$(SAM_BUCKET) --profile ${AWS_PROFILE} --force
 
 build:
 	pip3 install -r backend/functions/user/requirements.txt -t backend/functions/user/
